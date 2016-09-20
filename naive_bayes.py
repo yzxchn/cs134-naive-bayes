@@ -14,51 +14,50 @@ class NaiveBayes(Classifier):
     model = property(get_model, set_model)
 
     def train(self, train_set):
+        # count_table is a dictionary of Counter objects, the keys are the labels of the documents
         count_table = {}
-        label_to_index = self.get_label_index(train_set)
-        label_count = np.zeros(len(label_to_index))
+        # This is for counting the total number of documents of each label
+        label_count = Counter()
+        # The "vocabulary"
+        feature_set = set()
         for doc in train_set:
             l = doc.label
-            if len(l) > 0:
-                label_count[label_to_index[l]] += 1
+            # ignore the blog documents that have an empty unicode object as label.
+            if type(l) is unicode and len(l) == 0:
+                pass
+            else:
+                label_count[l] += 1
+                if l not in count_table:
+                    count_table[l] = Counter()
                 for feature in set(doc.features()):
-                    if feature not in count_table:
-                        count_table[feature] = np.ones(len(label_to_index))
-                    count_table[feature][label_to_index[l]] += 1
-
-        for feature in count_table.keys():
-            for label in label_to_index.keys():
-                count_table[feature][label_to_index[label]] =  math.log(count_table[feature][label_to_index[label]] / \
-                                                                        (label_count[label_to_index[label]] + 2.0))
-        count_table["*-UNK-*"] = np.zeros(len(label_to_index))
-        for label in label_to_index.keys():
-            count_table["*-UNK-*"][label_to_index[label]] = math.log(1.0 / (label_count[label_to_index[label]] + 2.0))
-
-        priors = np.log(label_count / (1.0*len(train_set)))
+                    feature_set.add(feature)
+                    count_table[l][feature] += 1
+        # convert counts to likelihoods P(X | Y)
+        for label in count_table.keys():
+            for feature in count_table[label].keys():
+                count_table[label][feature] = math.log((count_table[label][feature] + 1.0) / \
+                                                                     (label_count[label] + len(feature_set)))
+            # Add an Unknown probability for features not seen in training
+            count_table[label]["*-UNK-*"] = math.log(1.0 / (label_count[label] + len(feature_set)))
+            # Convert count of documents for each label to prior probabilities P(Y)
+            label_count[label] = math.log(label_count[label] / (1.0*len(train_set)))
+        # rename the tables
+        priors = label_count
         cond_prob_table = count_table
-        feature_set = count_table.keys()
 
-        self.model = (cond_prob_table, priors, label_to_index, feature_set, label_count)
+        # package the two tables into model
+        self.model = (cond_prob_table, priors)
 
     def classify(self, instance):
-        cond_prob_table, priors, label_to_index, feature_set, label_count = self.model
+        cond_prob_table, priors = self.model
         results = []
-        for label in label_to_index.keys():
-            prob_sum = priors[label_to_index[label]]
+        for label, likelihoods in cond_prob_table.items():
+            prob_sum = priors[label]
             for feature in set(instance.features()):
-                if feature not in feature_set:
-                    prob_sum += cond_prob_table["*-UNK-*"][label_to_index[label]]
+                if feature not in likelihoods:
+                    prob_sum += likelihoods["*-UNK-*"]
                 else:
-                    prob_sum += cond_prob_table[feature][label_to_index[label]]
+                    prob_sum += likelihoods[feature]
             results.append((label, prob_sum))
         return max(results, key=lambda (x, y): y)[0]
-
-    def get_label_index(self, dataset):
-        labels = {}
-        i = 0
-        for d in dataset:
-            if d.label not in labels and len(d.label) > 0:
-                labels[d.label] = i
-                i += 1
-        return labels
 
