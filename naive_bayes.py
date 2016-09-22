@@ -29,7 +29,7 @@ class NaiveBayes(Classifier):
                 label_count[l] += 1
                 if l not in count_table:
                     count_table[l] = Counter()
-                for feature in set(doc.features()):
+                for feature in doc.features():
                     feature_set.add(feature)
                     count_table[l][feature] += 1
         # convert counts to likelihoods P(X | Y)
@@ -47,13 +47,15 @@ class NaiveBayes(Classifier):
 
         # package the two tables into model
         self.model = (cond_prob_table, priors)
+        # self.save("bernoulli_laplace")
 
     def classify(self, instance):
+        # self.load("bernoulli_laplace")
         cond_prob_table, priors = self.model
         results = []
         for label, likelihoods in cond_prob_table.items():
             prob_sum = priors[label]
-            for feature in set(instance.features()):
+            for feature in instance.features():
                 if feature not in likelihoods:
                     prob_sum += likelihoods["*-UNK-*"]
                 else:
